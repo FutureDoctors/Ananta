@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -146,6 +146,7 @@
   <section class="panel rounded-2xl p-5 sm:p-7 mb-8">
     <div class="flex items-center gap-5 sm:gap-8">
       <div class="reel shrink-0" id="reelVisual">
+        <img id="reelCover" src="" alt="" class="hidden absolute inset-0 w-full h-full rounded-full object-cover z-10">
         <div class="reel-spoke" style="--r:0deg"></div>
         <div class="reel-spoke" style="--r:120deg"></div>
         <div class="reel-spoke" style="--r:240deg"></div>
@@ -198,7 +199,7 @@
       </div>
     </div>
   </section>
-
+  
   <!-- Catalog -->
   <section class="mb-16">
     <div class="flex items-baseline justify-between mb-3">
@@ -251,7 +252,9 @@
         <p class="text-sm text-[color:var(--muted)] mb-4">Upload a new song</p>
         <input id="upTitle" type="text" placeholder="Title" class="w-full rounded-lg px-3 py-2.5 text-sm mb-3">
         <textarea id="upDesc" placeholder="Description (optional)" rows="2" class="w-full rounded-lg px-3 py-2.5 text-sm mb-3"></textarea>
-        <input id="upFile" type="file" accept="audio/*" class="w-full text-xs mb-4 text-[color:var(--muted)]">
+        <input id="upFile" type="file" accept="audio/*" class="w-full text-xs mb-3 text-[color:var(--muted)]">
+        <label class="text-xs text-[color:var(--muted)] block mb-1">Cover photo (optional)</label>
+        <input id="upCover" type="file" accept="image/*" class="w-full text-xs mb-4 text-[color:var(--muted)]">
         <button id="btnUpload" class="btn-copper rounded-lg w-full py-2.5 text-sm">Upload</button>
         <p id="upStatus" class="text-xs text-[color:var(--muted)] mt-3"></p>
       </div>
@@ -320,13 +323,19 @@ function renderCatalog(){
   const list = document.getElementById('catalogList');
   list.innerHTML = tracks.map((t, i) => `
     <div class="track-row py-4 flex items-start gap-4 ${i === currentIndex ? 'playing' : ''}" data-index="${i}">
-      <button class="play-btn row-index font-mono text-sm w-6 pt-0.5 text-[color:var(--muted)] shrink-0 text-left" data-index="${i}">
+      <button class="play-btn shrink-0 w-11 h-11 rounded-lg overflow-hidden relative" data-index="${i}" style="background:var(--panel-2); border:1px solid var(--line);">
+        ${t.cover_url
+          ? `<img src="${t.cover_url}" alt="" class="w-full h-full object-cover">`
+          : `<span class="absolute inset-0 flex items-center justify-center text-[color:var(--copper)] font-display text-sm">${escapeHtml((t.title||'?').charAt(0).toUpperCase())}</span>`}
         ${i === currentIndex && isPlaying
-          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="inline"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>'
-          : String(i+1).padStart(2,'0')}
+          ? '<span class="absolute inset-0 flex items-center justify-center bg-black/40"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg></span>'
+          : ''}
       </button>
       <div class="min-w-0 flex-1">
-        <button class="play-btn row-title text-left font-display text-base block truncate w-full" data-index="${i}">${escapeHtml(t.title)}</button>
+        <div class="flex items-baseline gap-2">
+          <span class="row-index font-mono text-xs text-[color:var(--muted)] shrink-0">${String(i+1).padStart(2,'0')}</span>
+          <button class="play-btn row-title text-left font-display text-base truncate" data-index="${i}">${escapeHtml(t.title)}</button>
+        </div>
         ${t.description ? `<p class="text-xs text-[color:var(--muted)] mt-0.5 line-clamp-2">${escapeHtml(t.description)}</p>` : ''}
 
         <div class="flex items-center gap-4 mt-2">
@@ -351,7 +360,6 @@ function renderCatalog(){
       </div>
     </div>
   `).join('');
-
   list.querySelectorAll('.play-btn').forEach(btn => {
     btn.addEventListener('click', () => playTrack(parseInt(btn.dataset.index)));
   });
@@ -382,6 +390,13 @@ function playTrack(i){
   document.getElementById('btnShare').disabled = false;
   document.getElementById('reelVisual').classList.add('spin');
   document.getElementById('reelVisual').classList.remove('spin-paused');
+  const coverImg = document.getElementById('reelCover');
+  if(t.cover_url){
+    coverImg.src = t.cover_url;
+    coverImg.classList.remove('hidden');
+  } else {
+    coverImg.classList.add('hidden');
+  }
   renderCatalog();
 }
 
@@ -571,6 +586,7 @@ document.getElementById('btnUpload').addEventListener('click', async () => {
   const title = document.getElementById('upTitle').value.trim();
   const desc = document.getElementById('upDesc').value.trim();
   const file = document.getElementById('upFile').files[0];
+  const coverFile = document.getElementById('upCover').files[0];
   const status = document.getElementById('upStatus');
 
   if(!title || !file){
@@ -586,8 +602,21 @@ document.getElementById('btnUpload').addEventListener('click', async () => {
     return;
   }
   const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(path);
+
+  let coverUrl = null;
+  if(coverFile){
+    const coverPath = 'covers/' + Date.now() + '_' + coverFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const { error: coverErr } = await sb.storage.from(BUCKET).upload(coverPath, coverFile);
+    if(coverErr){
+      status.textContent = 'Cover upload failed: ' + coverErr.message;
+      return;
+    }
+    const { data: coverUrlData } = sb.storage.from(BUCKET).getPublicUrl(coverPath);
+    coverUrl = coverUrlData.publicUrl;
+  }
+
   const { error: dbErr } = await sb.from('tracks').insert({
-    title, description: desc, audio_url: urlData.publicUrl, reactions: {}
+    title, description: desc, audio_url: urlData.publicUrl, cover_url: coverUrl, reactions: {}
   });
   if(dbErr){
     status.textContent = 'Save failed: ' + dbErr.message;
@@ -597,6 +626,7 @@ document.getElementById('btnUpload').addEventListener('click', async () => {
   document.getElementById('upTitle').value = '';
   document.getElementById('upDesc').value = '';
   document.getElementById('upFile').value = '';
+  document.getElementById('upCover').value = '';
   loadTracks();
 });
 
@@ -635,3 +665,5 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
+  
