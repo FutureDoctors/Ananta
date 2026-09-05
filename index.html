@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ananta — A Sound Archive</title>
+<meta name="description" content="Ananta — a personal music archive, a collection of original recordings">
+<meta name="theme-color" content="#120E0A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23120E0A' stroke='%23B9803F' stroke-width='4'/%3E%3Ccircle cx='50' cy='50' r='10' fill='%23B9803F'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --bg: #120E0A;
+    --panel: #1C1610;
+    --panel-2: #241C14;
+    --line: #3A2E22;
+    --cream: #EDE3D0;
+    --muted: #A89678;
+    --copper: #B9803F;
+    --copper-soft: #8C6435;
+    --lamp: #A63A2B;
+  }
+  *{ -webkit-tap-highlight-color: transparent; }
+  html,body{ background: var(--bg); }
+  body{
+    font-family: 'Work Sans', sans-serif;
+    color: var(--cream);
+    background:
+      radial-gradient(ellipse at top, rgba(185,128,63,0.07), transparent 60%),
+      var(--bg);
+    min-height:100vh;
+  }
+  .font-display{ font-family:'Fraunces', serif; }
+  .font-mono{ font-family:'Space Mono', monospace; }
+
+  .grain{
+    position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .reel{
+    position:relative; width:150px; height:150px; border-radius:9999px;
+    background:
+      radial-gradient(circle at center, var(--panel-2) 0 22%, var(--line) 22% 24%, var(--panel) 24% 100%);
+    border:2px solid var(--line);
+    box-shadow: inset 0 0 30px rgba(0,0,0,.6), 0 10px 30px rgba(0,0,0,.5);
+  }
+  .reel::before{
+    content:''; position:absolute; inset:0; border-radius:9999px;
+    background:
+      repeating-conic-gradient(from 0deg, rgba(185,128,63,0.10) 0deg 3deg, transparent 3deg 30deg);
+  }
+  .reel-spoke{
+    position:absolute; top:50%; left:50%; width:8px; height:8px; border-radius:9999px;
+    background: var(--bg); border:2px solid var(--copper-soft);
+    transform: translate(-50%,-50%) rotate(var(--r)) translate(0, -38px);
+  }
+  .spin{ animation: spin 6s linear infinite; }
+  .spin-paused{ animation-play-state: paused; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .hairline{ border-color: var(--line); }
+  .panel{ background: var(--panel); border:1px solid var(--line); }
+
+  input, textarea{
+    background: var(--panel-2); border:1px solid var(--line); color: var(--cream);
+  }
+  input::placeholder, textarea::placeholder{ color:#7A6B54; }
+  input:focus, textarea:focus, button:focus-visible, a:focus-visible{
+    outline: 2px solid var(--copper); outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background: var(--line); border-radius:4px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+
+  .lamp-dot{
+    width:7px; height:7px; border-radius:9999px; background: var(--lamp);
+    box-shadow: 0 0 8px var(--lamp);
+  }
+
+  .track-row{ position:relative; transition: background-color .2s ease; border-left:2px solid transparent; }
+  .track-row:hover{ background: rgba(185,128,63,0.04); }
+  .track-row:hover .row-index{ color: var(--copper); }
+  .track-row.playing{ background: rgba(185,128,63,0.07); border-left-color: var(--copper); }
+  .track-row.playing .row-index{ color: var(--copper); }
+  .track-row.playing .row-title{ color: var(--copper); }
+
+  .eq{ display:flex; align-items:flex-end; gap:2px; height:14px; }
+  .eq span{
+    width:3px; background: var(--copper); border-radius:1px;
+    animation: eq 0.9s ease-in-out infinite;
+  }
+  .eq span:nth-child(1){ height:40%; animation-delay:-0.6s; }
+  .eq span:nth-child(2){ height:100%; animation-delay:-0.2s; }
+  .eq span:nth-child(3){ height:60%; animation-delay:-0.4s; }
+  @keyframes eq{
+    0%, 100%{ transform: scaleY(0.4); }
+    50%{ transform: scaleY(1); }
+  }
+
+  #adminOverlay.overlay-in{ animation: overlayIn .25s ease-out; }
+  @keyframes overlayIn{ from{ opacity:0; } to{ opacity:1; } }
+  #adminOverlay .panel{ animation: panelIn .3s ease-out; }
+  @keyframes panelIn{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+
+  @media (prefers-reduced-motion: reduce){
+    .spin{ animation: none; }
+    *{ scroll-behavior: auto !important; }
+  }
+
+  #adminOverlay{ backdrop-filter: blur(6px); background: rgba(9,7,5,.88); }
+
+  .btn-copper{
+    background: var(--copper); color:#150F0A; font-weight:600;
+  }
+  .btn-copper:hover{ background:#CB9250; }
+  .btn-ghost{ border:1px solid var(--line); color: var(--cream); }
+  .btn-ghost:hover{ border-color: var(--copper); }
+</style>
+</head>
+<body class="antialiased">
+<div class="grain"></div>
+
+<!-- ===================== MAIN SITE ===================== -->
+<div id="site" class="relative z-10 max-w-3xl mx-auto px-5 sm:px-8">
+
+  <!-- Header -->
+  <header class="pt-10 pb-6 flex items-end justify-between">
+    <div>
+      <h1 class="font-display text-4xl sm:text-5xl tracking-tight">Ananta</h1>
+      <p class="text-[13px] text-[color:var(--muted)] mt-1">A personal archive of my recordings</p>
+    </div>
+    <div class="lamp-dot mb-2" title="Live"></div>
+  </header>
+
+  <!-- Player -->
+  <section class="panel rounded-2xl p-5 sm:p-7 mb-8">
+    <div class="flex items-center gap-5 sm:gap-8">
+      <div class="reel shrink-0" id="reelVisual">
+        <div class="reel-spoke" style="--r:0deg"></div>
+        <div class="reel-spoke" style="--r:120deg"></div>
+        <div class="reel-spoke" style="--r:240deg"></div>
+      </div>
+
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2">
+          <p id="nowTitle" class="font-display text-xl sm:text-2xl truncate">Select a track</p>
+          <div id="eq" class="eq hidden shrink-0" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <p id="nowDesc" class="text-sm text-[color:var(--muted)] mt-1 line-clamp-2">Play a song from the list below</p>
+
+        <div class="mt-4 flex items-center gap-3">
+          <span id="curTime" class="font-mono text-xs text-[color:var(--muted)] w-10">0:00</span>
+          <div class="relative flex-1 h-1.5 flex items-center cursor-pointer group" id="progressTrack">
+            <div class="w-full h-1.5 bg-[color:var(--line)] rounded-full overflow-hidden">
+              <div id="progressFill" class="h-full bg-[color:var(--copper)] rounded-full" style="width:0%"></div>
+            </div>
+            <div id="progressThumb" class="absolute w-3 h-3 rounded-full bg-[color:var(--cream)] border-2 border-[color:var(--copper)] shadow -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity" style="left:0%"></div>
+          </div>
+          <span id="durTime" class="font-mono text-xs text-[color:var(--muted)] w-10 text-right">0:00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between mt-6">
+      <div class="flex items-center gap-2">
+        <button id="btnPrev" class="btn-ghost rounded-full w-10 h-10 flex items-center justify-center transition-transform active:scale-90" aria-label="Previous">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l10 6V6z"/></svg>
+        </button>
+        <button id="btnPlay" class="btn-copper rounded-full w-12 h-12 flex items-center justify-center transition-transform active:scale-90" aria-label="Play / Pause">
+          <svg id="iconPlay" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="iconPause" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="hidden"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>
+        </button>
+        <button id="btnNext" class="btn-ghost rounded-full w-10 h-10 flex items-center justify-center transition-transform active:scale-90" aria-label="Next">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4.5 6v12l10-6z"/></svg>
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btnDownload" class="btn-ghost text-xs px-3 py-2 rounded-full flex items-center gap-1.5" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 16l-6-6h4V4h4v6h4zM5 18h14v2H5z"/></svg>
+          Download
+        </button>
+        <button id="btnShare" class="btn-ghost text-xs px-3 py-2 rounded-full flex items-center gap-1.5" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L7.04 9.81C6.5 9.31 5.79 9 5 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
+          Share
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Catalog -->
+  <section class="mb-16">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="font-display text-lg">Catalog</h2>
+      <p id="trackCount" class="text-xs text-[color:var(--muted)] font-mono"></p>
+    </div>
+
+    <div id="catalogList" class="divide-y hairline border-t border-b hairline"></div>
+    <p id="emptyState" class="hidden text-sm text-[color:var(--muted)] text-center py-10">No songs yet. Coming soon.</p>
+    <p id="loadingState" class="text-sm text-[color:var(--muted)] text-center py-10">Loading…</p>
+  </section>
+
+  <footer class="pb-10 text-center">
+    <p class="text-[11px] text-[color:var(--muted)]">Ananta — A Personal Archive</p>
+  </footer>
+</div>
+
+<!-- ===================== SHARE MODAL ===================== -->
+<div id="shareModal" class="hidden fixed inset-0 z-40 items-center justify-center p-6" style="background:rgba(9,7,5,.85)">
+  <div class="panel rounded-2xl p-6 max-w-xs w-full text-center">
+    <p class="font-display text-lg mb-3" id="shareTrackTitle">Share</p>
+    <img id="qrImage" class="mx-auto rounded-lg mb-4 bg-white p-2" width="180" height="180" alt="QR code">
+    <div class="flex gap-2">
+      <button id="btnCopyLink" class="btn-ghost rounded-full text-xs px-4 py-2 flex-1">Copy link</button>
+      <button id="btnCloseShare" class="btn-copper rounded-full text-xs px-4 py-2 flex-1">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ADMIN OVERLAY ===================== -->
+<div id="adminOverlay" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="max-w-md mx-auto px-5 py-10 min-h-screen flex flex-col">
+    <div class="flex items-center justify-between mb-8">
+      <p class="font-display text-xl">Admin</p>
+      <button id="btnCloseAdmin" class="btn-ghost rounded-full w-9 h-9 flex items-center justify-center">✕</button>
+    </div>
+
+    <!-- Login -->
+    <div id="loginBox" class="panel rounded-2xl p-6">
+      <p class="text-sm text-[color:var(--muted)] mb-4">Log in to upload</p>
+      <input id="loginEmail" type="email" placeholder="Email" class="w-full rounded-lg px-3 py-2.5 text-sm mb-3">
+      <input id="loginPassword" type="password" placeholder="Password" class="w-full rounded-lg px-3 py-2.5 text-sm mb-3">
+      <button id="btnLogin" class="btn-copper rounded-lg w-full py-2.5 text-sm">Log in</button>
+      <p id="loginError" class="hidden text-xs text-[color:var(--lamp)] mt-3"></p>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashBox" class="hidden">
+      <div class="panel rounded-2xl p-6 mb-6">
+        <p class="text-sm text-[color:var(--muted)] mb-4">Upload a new song</p>
+        <input id="upTitle" type="text" placeholder="Title" class="w-full rounded-lg px-3 py-2.5 text-sm mb-3">
+        <textarea id="upDesc" placeholder="Description (optional)" rows="2" class="w-full rounded-lg px-3 py-2.5 text-sm mb-3"></textarea>
+        <input id="upFile" type="file" accept="audio/*" class="w-full text-xs mb-4 text-[color:var(--muted)]">
+        <button id="btnUpload" class="btn-copper rounded-lg w-full py-2.5 text-sm">Upload</button>
+        <p id="upStatus" class="text-xs text-[color:var(--muted)] mt-3"></p>
+      </div>
+
+      <div class="panel rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <p class="text-sm text-[color:var(--muted)]">Manage all songs</p>
+          <button id="btnLogout" class="text-xs text-[color:var(--lamp)]">Log out</button>
+        </div>
+        <div id="adminTrackList" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ CONFIG ============ */
+const SUPABASE_URL = 'https://sghnueauevvbtkapguqt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnaG51ZWF1ZXZ2YnRrYXBndXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MjM3NzQsImV4cCI6MjEwMzk5OTc3NH0.dkqo_rqbrxHu696fRt8eoxux449qHU2En3PIhVFb92U';
+const BUCKET = 'tracks-audio';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ============ STATE ============ */
+let tracks = [];
+let currentIndex = -1;
+let isPlaying = false;
+const audio = new Audio();
+audio.preload = 'metadata';
+
+/* ============ UTIL ============ */
+function fmtTime(s){
+  if(!isFinite(s) || s < 0) return '0:00';
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return m + ':' + String(sec).padStart(2,'0');
+}
+function escapeHtml(str){
+  return (str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ============ LOAD TRACKS ============ */
+async function loadTracks(){
+  const loadingEl = document.getElementById('loadingState');
+  const emptyEl = document.getElementById('emptyState');
+  loadingEl.classList.remove('hidden');
+  emptyEl.classList.add('hidden');
+
+  const { data, error } = await sb.from('tracks').select('*').order('created_at', { ascending: false });
+  loadingEl.classList.add('hidden');
+
+  if(error){
+    console.error(error);
+    loadingEl.textContent = 'Something went wrong loading songs.';
+    loadingEl.classList.remove('hidden');
+    return;
+  }
+  tracks = data || [];
+  document.getElementById('trackCount').textContent = tracks.length ? tracks.length + ' songs' : '';
+  if(tracks.length === 0){ emptyEl.classList.remove('hidden'); }
+  renderCatalog();
+  renderAdminTrackList();
+}
+
+/* ============ CATALOG RENDER ============ */
+function renderCatalog(){
+  const list = document.getElementById('catalogList');
+  list.innerHTML = tracks.map((t, i) => `
+    <div class="track-row py-4 flex items-start gap-4 ${i === currentIndex ? 'playing' : ''}" data-index="${i}">
+      <button class="play-btn row-index font-mono text-sm w-6 pt-0.5 text-[color:var(--muted)] shrink-0 text-left" data-index="${i}">
+        ${i === currentIndex && isPlaying
+          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="inline"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>'
+          : String(i+1).padStart(2,'0')}
+      </button>
+      <div class="min-w-0 flex-1">
+        <button class="play-btn row-title text-left font-display text-base block truncate w-full" data-index="${i}">${escapeHtml(t.title)}</button>
+        ${t.description ? `<p class="text-xs text-[color:var(--muted)] mt-0.5 line-clamp-2">${escapeHtml(t.description)}</p>` : ''}
+
+        <div class="flex items-center gap-4 mt-2">
+          <button class="react-btn text-xs text-[color:var(--muted)] hover:text-[color:var(--copper)]" data-id="${t.id}" data-type="heart">
+            ♡ <span class="font-mono">${(t.reactions && t.reactions.heart) || 0}</span>
+          </button>
+          <button class="react-btn text-xs text-[color:var(--muted)] hover:text-[color:var(--copper)]" data-id="${t.id}" data-type="fire">
+            ✦ <span class="font-mono">${(t.reactions && t.reactions.fire) || 0}</span>
+          </button>
+          <button class="comment-toggle text-xs text-[color:var(--muted)] hover:text-[color:var(--copper)]" data-id="${t.id}">💬 Comment</button>
+          <a class="dl-link text-xs text-[color:var(--muted)] hover:text-[color:var(--copper)] ml-auto" href="${t.audio_url}${t.audio_url && t.audio_url.includes('?') ? '&' : '?'}download=${encodeURIComponent(t.title)}.mp3">⬇</a>
+        </div>
+
+        <div class="comment-box hidden mt-3 pl-1" data-id="${t.id}">
+          <div class="comment-list space-y-2 mb-2 text-xs text-[color:var(--muted)]"></div>
+          <div class="flex gap-2">
+            <input type="text" placeholder="Your name" class="comment-name w-24 rounded px-2 py-1.5 text-xs">
+            <input type="text" placeholder="Write a comment…" class="comment-input flex-1 rounded px-2 py-1.5 text-xs">
+            <button class="comment-send btn-copper rounded px-3 text-xs" data-id="${t.id}">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.play-btn').forEach(btn => {
+    btn.addEventListener('click', () => playTrack(parseInt(btn.dataset.index)));
+  });
+  list.querySelectorAll('.react-btn').forEach(btn => {
+    btn.addEventListener('click', () => react(btn.dataset.id, btn.dataset.type));
+  });
+  list.querySelectorAll('.comment-toggle').forEach(btn => {
+    btn.addEventListener('click', () => toggleComments(btn.dataset.id));
+  });
+  list.querySelectorAll('.comment-send').forEach(btn => {
+    btn.addEventListener('click', () => postComment(btn.dataset.id));
+  });
+}
+
+/* ============ PLAYER ============ */
+function playTrack(i){
+  if(i < 0 || i >= tracks.length) return;
+  currentIndex = i;
+  const t = tracks[i];
+  audio.src = t.audio_url;
+  audio.play().catch(err => console.warn('play blocked', err));
+  isPlaying = true;
+  document.getElementById('nowTitle').textContent = t.title;
+  document.getElementById('nowDesc').textContent = t.description || '—';
+  setPlayIcon(true);
+  document.getElementById('eq').classList.remove('hidden');
+  document.getElementById('btnDownload').disabled = false;
+  document.getElementById('btnShare').disabled = false;
+  document.getElementById('reelVisual').classList.add('spin');
+  document.getElementById('reelVisual').classList.remove('spin-paused');
+  renderCatalog();
+}
+
+function setPlayIcon(playing){
+  document.getElementById('iconPlay').classList.toggle('hidden', playing);
+  document.getElementById('iconPause').classList.toggle('hidden', !playing);
+}
+
+function togglePlay(){
+  if(currentIndex === -1){
+    if(tracks.length) playTrack(0);
+    return;
+  }
+  if(isPlaying){
+    audio.pause();
+    isPlaying = false;
+    setPlayIcon(false);
+    document.getElementById('eq').classList.add('hidden');
+    document.getElementById('reelVisual').classList.add('spin-paused');
+  } else {
+    audio.play().catch(err => console.warn(err));
+    isPlaying = true;
+    setPlayIcon(true);
+    document.getElementById('eq').classList.remove('hidden');
+    document.getElementById('reelVisual').classList.remove('spin-paused');
+  }
+  renderCatalog();
+}
+
+function nextTrack(){ if(tracks.length) playTrack((currentIndex + 1) % tracks.length); }
+function prevTrack(){ if(tracks.length) playTrack((currentIndex - 1 + tracks.length) % tracks.length); }
+
+audio.addEventListener('timeupdate', () => {
+  document.getElementById('curTime').textContent = fmtTime(audio.currentTime);
+  const pct = audio.duration ? (audio.currentTime/audio.duration*100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressThumb').style.left = pct + '%';
+});
+audio.addEventListener('loadedmetadata', () => {
+  document.getElementById('durTime').textContent = fmtTime(audio.duration);
+});
+audio.addEventListener('ended', nextTrack);
+
+document.getElementById('progressTrack').addEventListener('click', (e) => {
+  if(!audio.duration) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const ratio = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = ratio * audio.duration;
+});
+
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+document.getElementById('btnNext').addEventListener('click', nextTrack);
+document.getElementById('btnPrev').addEventListener('click', prevTrack);
+
+document.getElementById('btnDownload').addEventListener('click', () => {
+  if(currentIndex === -1) return;
+  const t = tracks[currentIndex];
+  const a = document.createElement('a');
+  a.href = t.audio_url + (t.audio_url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(t.title) + '.mp3';
+  a.click();
+});
+
+/* ============ SHARE / QR ============ */
+document.getElementById('btnShare').addEventListener('click', () => {
+  if(currentIndex === -1) return;
+  const t = tracks[currentIndex];
+  const url = location.origin + location.pathname + '#track-' + t.id;
+  document.getElementById('shareTrackTitle').textContent = t.title;
+  document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(url);
+  document.getElementById('shareModal').dataset.url = url;
+  document.getElementById('shareModal').classList.remove('hidden');
+  document.getElementById('shareModal').classList.add('flex');
+});
+document.getElementById('btnCloseShare').addEventListener('click', () => {
+  document.getElementById('shareModal').classList.add('hidden');
+  document.getElementById('shareModal').classList.remove('flex');
+});
+document.getElementById('btnCopyLink').addEventListener('click', async () => {
+  const url = document.getElementById('shareModal').dataset.url;
+  try{
+    await navigator.clipboard.writeText(url);
+    const btn = document.getElementById('btnCopyLink');
+    const old = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => btn.textContent = old, 1500);
+  }catch(e){ alert(url); }
+});
+
+/* ============ REACTIONS ============ */
+async function react(trackId, type){
+  const t = tracks.find(x => x.id == trackId);
+  if(!t) return;
+  const current = t.reactions || {};
+  const updated = { ...current, [type]: (current[type] || 0) + 1 };
+  const { error } = await sb.from('tracks').update({ reactions: updated }).eq('id', trackId);
+  if(!error){
+    t.reactions = updated;
+    renderCatalog();
+  }
+}
+
+/* ============ COMMENTS ============ */
+async function toggleComments(trackId){
+  const box = document.querySelector(`.comment-box[data-id="${trackId}"]`);
+  if(!box) return;
+  const isHidden = box.classList.contains('hidden');
+  box.classList.toggle('hidden');
+  if(isHidden){
+    await loadComments(trackId);
+  }
+}
+async function loadComments(trackId){
+  const box = document.querySelector(`.comment-box[data-id="${trackId}"] .comment-list`);
+  box.innerHTML = '<p class="opacity-60">Loading…</p>';
+  const { data, error } = await sb.from('comments').select('*').eq('track_id', trackId).order('created_at', { ascending: true });
+  if(error){ box.innerHTML = '<p class="opacity-60">Couldn\'t load comments.</p>'; return; }
+  if(!data || !data.length){ box.innerHTML = '<p class="opacity-60">No comments yet.</p>'; return; }
+  box.innerHTML = data.map(c => `<p><span class="text-[color:var(--copper)]">${escapeHtml(c.name || 'Someone')}</span>: ${escapeHtml(c.message)}</p>`).join('');
+}
+async function postComment(trackId){
+  const wrap = document.querySelector(`.comment-box[data-id="${trackId}"]`);
+  const nameInput = wrap.querySelector('.comment-name');
+  const msgInput = wrap.querySelector('.comment-input');
+  const message = msgInput.value.trim();
+  if(!message) return;
+  const name = nameInput.value.trim() || 'Anonymous';
+  const { error } = await sb.from('comments').insert({ track_id: trackId, name, message });
+  if(!error){
+    msgInput.value = '';
+    loadComments(trackId);
+  }
+}
+
+/* ============ ADMIN ============ */
+let session = null;
+
+function checkAdminHash(){
+  const overlay = document.getElementById('adminOverlay');
+  if(location.hash === '#admin'){
+    overlay.classList.remove('hidden');
+    overlay.classList.add('overlay-in');
+    refreshAdminUI();
+  } else {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('overlay-in');
+  }
+}
+window.addEventListener('hashchange', checkAdminHash);
+
+document.getElementById('btnCloseAdmin').addEventListener('click', () => {
+  location.hash = '';
+});
+
+async function refreshAdminUI(){
+  const { data } = await sb.auth.getSession();
+  session = data.session;
+  if(session){
+    document.getElementById('loginBox').classList.add('hidden');
+    document.getElementById('dashBox').classList.remove('hidden');
+    renderAdminTrackList();
+  } else {
+    document.getElementById('loginBox').classList.remove('hidden');
+    document.getElementById('dashBox').classList.add('hidden');
+  }
+}
+
+document.getElementById('btnLogin').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){
+    errEl.textContent = 'Login failed — check email or password.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  refreshAdminUI();
+});
+
+document.getElementById('btnLogout').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  refreshAdminUI();
+});
+
+document.getElementById('btnUpload').addEventListener('click', async () => {
+  const title = document.getElementById('upTitle').value.trim();
+  const desc = document.getElementById('upDesc').value.trim();
+  const file = document.getElementById('upFile').files[0];
+  const status = document.getElementById('upStatus');
+
+  if(!title || !file){
+    status.textContent = 'Title and file are both required.';
+    return;
+  }
+  status.textContent = 'Uploading…';
+
+  const path = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file);
+  if(upErr){
+    status.textContent = 'Upload failed: ' + upErr.message;
+    return;
+  }
+  const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(path);
+  const { error: dbErr } = await sb.from('tracks').insert({
+    title, description: desc, audio_url: urlData.publicUrl, reactions: {}
+  });
+  if(dbErr){
+    status.textContent = 'Save failed: ' + dbErr.message;
+    return;
+  }
+  status.textContent = 'Uploaded ✓';
+  document.getElementById('upTitle').value = '';
+  document.getElementById('upDesc').value = '';
+  document.getElementById('upFile').value = '';
+  loadTracks();
+});
+
+function renderAdminTrackList(){
+  const el = document.getElementById('adminTrackList');
+  if(!el) return;
+  if(!tracks.length){ el.innerHTML = '<p class="text-xs text-[color:var(--muted)]">No songs.</p>'; return; }
+  el.innerHTML = tracks.map(t => `
+    <div class="flex items-center justify-between text-sm py-2 border-b hairline">
+      <span class="truncate pr-3">${escapeHtml(t.title)}</span>
+      <button class="del-btn text-xs text-[color:var(--lamp)] shrink-0" data-id="${t.id}">Delete</button>
+    </div>
+  `).join('');
+  el.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteTrack(btn.dataset.id));
+  });
+}
+
+async function deleteTrack(id){
+  if(!confirm('Delete this song?')) return;
+  const { error } = await sb.from('tracks').delete().eq('id', id);
+  if(!error){ loadTracks(); }
+}
+
+/* ============ INIT ============ */
+checkAdminHash();
+loadTracks();
+sb.auth.onAuthStateChange(() => { if(location.hash === '#admin') refreshAdminUI(); });
+
+/* Entrance animation */
+window.addEventListener('DOMContentLoaded', () => {
+  if(window.gsap){
+    gsap.from('#site > *', { opacity:0, y:16, duration:.6, stagger:.08, ease:'power2.out' });
+  }
+});
+</script>
+</body>
+</html>
