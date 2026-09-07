@@ -547,6 +547,8 @@ async function postComment(trackId){
   if(!error){
     msgInput.value = '';
     loadComments(trackId);
+  } else {
+    alert('Error: ' + error.message);
   }
 }
 
