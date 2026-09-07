@@ -740,7 +740,10 @@ async function deleteTrack(id){
 /* ============ INIT ============ */
 checkAdminHash();
 loadTracks();
-sb.auth.onAuthStateChange(() => { if(location.hash === '#admin') refreshAdminUI(); });
+sb.auth.onAuthStateChange((event) => {
+  if(event === 'TOKEN_REFRESHED') return;
+  if(location.hash === '#admin') refreshAdminUI();
+});
 
 /* Entrance animation */
 window.addEventListener('DOMContentLoaded', () => {
