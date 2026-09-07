@@ -375,12 +375,30 @@ function renderCatalog(){
 }
 
 /* ============ PLAYER ============ */
-function playTrack(i){
+function showResumeBanner(){
+  let banner = document.getElementById('resumeBanner');
+  if(banner) return;
+  banner = document.createElement('button');
+  banner.id = 'resumeBanner';
+  banner.textContent = '▶ Tap to continue playing';
+  banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#B9803F;color:#150F0A;font-weight:600;padding:10px 22px;border-radius:9999px;z-index:100;border:none;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.4);';
+  banner.addEventListener('click', () => {
+    audio.play().then(() => {
+      isPlaying = true;
+      setPlayIcon(true);
+      document.getElementById('reelVisual').classList.remove('spin-paused');
+      banner.remove();
+      renderCatalog();
+    }).catch(()=>{});
+  });
+  document.body.appendChild(banner);
+}
+ function playTrack(i){
   if(i < 0 || i >= tracks.length) return;
   currentIndex = i;
   const t = tracks[i];
   audio.src = t.audio_url;
-  audio.play().catch(err => console.warn('play blocked', err));
+  audio.play().then(() => {}).catch(err => { console.warn('play blocked', err); showResumeBanner(); });
   isPlaying = true;
   document.getElementById('nowTitle').textContent = t.title;
   document.getElementById('nowDesc').textContent = t.description || '—';
