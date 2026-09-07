@@ -653,14 +653,81 @@ function renderAdminTrackList(){
   if(!el) return;
   if(!tracks.length){ el.innerHTML = '<p class="text-xs text-[color:var(--muted)]">No songs.</p>'; return; }
   el.innerHTML = tracks.map(t => `
-    <div class="flex items-center justify-between text-sm py-2 border-b hairline">
-      <span class="truncate pr-3">${escapeHtml(t.title)}</span>
-      <button class="del-btn text-xs text-[color:var(--lamp)] shrink-0" data-id="${t.id}">Delete</button>
+    <div class="border-b hairline py-2">
+      <div class="flex items-center justify-between text-sm">
+        <span class="truncate pr-3">${escapeHtml(t.title)}</span>
+        <div class="flex items-center gap-3 shrink-0">
+          <button class="edit-btn text-xs text-[color:var(--copper)]" data-id="${t.id}">Edit</button>
+          <button class="del-btn text-xs text-[color:var(--lamp)]" data-id="${t.id}">Delete</button>
+        </div>
+      </div>
+      <div id="edit-box-${t.id}" class="hidden mt-3 space-y-2">
+        <input type="text" class="edit-title w-full rounded-lg px-3 py-2 text-xs" value="${escapeHtml(t.title)}" placeholder="Title">
+        <textarea class="edit-desc w-full rounded-lg px-3 py-2 text-xs" rows="2" placeholder="Description">${escapeHtml(t.description || '')}</textarea>
+        <label class="text-[11px] text-[color:var(--muted)] block">Replace song file (optional)</label>
+        <input type="file" accept="audio/*" class="edit-file w-full text-xs text-[color:var(--muted)]">
+        <label class="text-[11px] text-[color:var(--muted)] block">Replace cover photo (optional)</label>
+        <input type="file" accept="image/*" class="edit-cover w-full text-xs text-[color:var(--muted)]">
+        <div class="flex gap-2 pt-1">
+          <button class="save-edit-btn btn-copper rounded-lg px-4 py-2 text-xs flex-1" data-id="${t.id}">Save changes</button>
+          <button class="cancel-edit-btn btn-ghost rounded-lg px-4 py-2 text-xs" data-id="${t.id}">Cancel</button>
+        </div>
+        <p class="edit-status text-xs text-[color:var(--muted)]"></p>
+      </div>
     </div>
   `).join('');
   el.querySelectorAll('.del-btn').forEach(btn => {
     btn.addEventListener('click', () => deleteTrack(btn.dataset.id));
   });
+  el.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('edit-box-' + btn.dataset.id).classList.toggle('hidden');
+    });
+  });
+  el.querySelectorAll('.cancel-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('edit-box-' + btn.dataset.id).classList.add('hidden');
+    });
+  });
+  el.querySelectorAll('.save-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => saveTrackEdit(btn.dataset.id));
+  });
+}
+
+async function saveTrackEdit(id){
+  const box = document.getElementById('edit-box-' + id);
+  const title = box.querySelector('.edit-title').value.trim();
+  const desc = box.querySelector('.edit-desc').value.trim();
+  const newFile = box.querySelector('.edit-file').files[0];
+  const newCover = box.querySelector('.edit-cover').files[0];
+  const status = box.querySelector('.edit-status');
+
+  if(!title){ status.textContent = 'Title cannot be empty.'; return; }
+  status.textContent = 'Saving…';
+
+  const updates = { title, description: desc };
+
+  if(newFile){
+    const path = Date.now() + '_' + newFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const { error: upErr } = await sb.storage.from(BUCKET).upload(path, newFile);
+    if(upErr){ status.textContent = 'File replace failed: ' + upErr.message; return; }
+    const { data: urlData } = sb.storage.from(BUCKET).getPublicUrl(path);
+    updates.audio_url = urlData.publicUrl;
+  }
+
+  if(newCover){
+    const coverPath = 'covers/' + Date.now() + '_' + newCover.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const { error: coverErr } = await sb.storage.from(BUCKET).upload(coverPath, newCover);
+    if(coverErr){ status.textContent = 'Cover replace failed: ' + coverErr.message; return; }
+    const { data: coverUrlData } = sb.storage.from(BUCKET).getPublicUrl(coverPath);
+    updates.cover_url = coverUrlData.publicUrl;
+  }
+
+  const { error: dbErr } = await sb.from('tracks').update(updates).eq('id', id);
+  if(dbErr){ status.textContent = 'Save failed: ' + dbErr.message; return; }
+
+  status.textContent = 'Saved ✓';
+  loadTracks();
 }
 
 async function deleteTrack(id){
@@ -668,6 +735,7 @@ async function deleteTrack(id){
   const { error } = await sb.from('tracks').delete().eq('id', id);
   if(!error){ loadTracks(); }
 }
+ 
 
 /* ============ INIT ============ */
 checkAdminHash();
